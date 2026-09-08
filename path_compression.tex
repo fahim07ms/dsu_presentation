@@ -293,13 +293,17 @@ find(node):
   \uncover<4->{%
     \begin{tcolorbox}[colback=oc-blue-0, colframe=oc-blue-6,
       boxrule=0.8pt, arc=1.5pt, left=6pt, right=6pt, top=4pt, bottom=4pt]
-      \centering\small For $k\geq1$ calls to \texttt{find(0)}, with \textbf{no intervening unions}:\par
-      naive: $6k$ parent-link traversals\quad
-      vs.\quad compression: $6+(k-1)$.
+      \centering\small\textbf{Time complexity} ($n$ elements)\par
+      \textbf{Naive:} $O(n)$ worst case\quad vs.\quad
+      \textbf{Path compression alone:} $O(\log n)$ amortized.\par\smallskip
+      \uncover<5->{{\footnotesize Amortized = averaged over an operation sequence;\par
+        a single \texttt{find} can still take $O(n)$.}}
     \end{tcolorbox}}
-  \note{25 seconds, 4 overlays. Present the original tree and search costs together.
+  \note{25 seconds, 5 overlays. Present the original tree and search costs together.
     Reveal the compressed star, then highlight the next query with its one-link
-    cost and the benefit to other visited nodes. Finally show the complete count
-    comparison with its conditions. Count traversed links, not all reads or writes. End this part
+    cost and the benefit to other visited nodes. On overlay 4, compare O(n) worst-case
+    time for naive find with the O(log n) amortized bound for path compression alone.
+    On overlay 5, explain that amortized means averaged over a sequence, not a
+    guarantee for one call: the first search can still be linear. End this part
     here; leave the explanation of union by rank entirely to member 3.}
 \end{frame}
