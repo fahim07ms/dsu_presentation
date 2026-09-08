@@ -1,0 +1,305 @@
+\section{Path Compression}
+
+\tikzset{
+  pc vertex/.style={circle, draw=oc-gray-6, fill=white, thick,
+    minimum size=0.55cm, inner sep=1pt, font=\small\bfseries},
+  pc pointer/.style={->, >=stealth, thick, draw=oc-gray-6},
+  pc visited/.style={draw=oc-orange-6, fill=oc-orange-0, line width=1.5pt},
+  pc shortcut/.style={pc pointer, draw=oc-teal-6, line width=1.5pt}
+}
+
+\newcommand{\pcchain}[2][]{%
+  \begin{tikzpicture}[x=0.8cm, y=0.8cm]
+    \path[use as bounding box] (-0.4,-0.85) rectangle (6.4,2.25);
+    \foreach \element in {0,...,5}{
+      \node[pc vertex] (pcnode\element) at (\element,0) {\element};
+    }
+    \node[pc vertex, draw=oc-blue-6, fill=oc-blue-0] (pcnode6) at (6,0) {6};
+    \draw[pc pointer, oc-blue-6] (pcnode6) edge[loop below] (pcnode6);
+    \foreach \element in {0,...,5}{
+      \ifnum\element<#2\relax
+        \pgfmathtruncatemacro{\ancestor}{\element+1}
+        \draw[pc pointer] (pcnode\element) -- (pcnode\ancestor);
+      \else
+        \ifnum\element=5\relax
+          \draw[pc pointer] (pcnode5) -- (pcnode6);
+        \else
+          \draw[pc shortcut] (pcnode\element) to[bend left=40] (pcnode6);
+        \fi
+      \fi
+    }
+    #1
+  \end{tikzpicture}%
+}
+
+\newcommand{\pcquadrants}[4]{%
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      \begin{minipage}[t][2.65cm][t]{\linewidth}
+        \textbf{Pseudocode}\par\smallskip
+        #1
+      \end{minipage}
+      \par\medskip
+      \textbf{Operations}\par\smallskip
+      {\small #3}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \begin{minipage}[t][2.65cm][t]{\linewidth}
+        \textbf{Parent array}\par\medskip
+        #2
+      \end{minipage}
+      \par\medskip
+      \textbf{DSU Forest}\par\smallskip
+      #4
+    \end{column}
+  \end{columns}%
+}
+
+\defverbatim[colored,width=\dsucodewidth]\pcfindcode{%
+\begin{lstlisting}[style=dsupseudocode,escapeinside={(*@}{@*)}]
+find(node):
+    if parent[node] = node then
+        return node
+    (*@\textcolor{oc-teal-7}{parent[node] $\leftarrow$ find(parent[node])}@*)
+    return parent[node]
+\end{lstlisting}
+}
+
+\defverbatim[colored,width=\dsucodewidth]\pcdescendcode{%
+\begin{lstlisting}[style=dsupseudocode,escapeinside={(*@}{@*)}]
+find(node):
+    if parent[node] = node then
+        return node
+    parent[node] <- (*@\textcolor{oc-orange-6}{find(parent[node])}@*)
+    return parent[node]
+\end{lstlisting}
+}
+
+\defverbatim[colored,width=\dsucodewidth]\pcrootcode{%
+\begin{lstlisting}[style=dsupseudocode,escapeinside={(*@}{@*)}]
+find(node):
+    if parent[node] = node then
+        (*@\textcolor{oc-orange-6}{return node}@*)
+    parent[node] <- find(parent[node])
+    return parent[node]
+\end{lstlisting}
+}
+
+\defverbatim[colored,width=\dsucodewidth]\pcreturncode{%
+\begin{lstlisting}[style=dsupseudocode,escapeinside={(*@}{@*)}]
+find(node):
+    if parent[node] = node then
+        return node
+    (*@\textcolor{oc-teal-7}{parent[node]}@*) <- find(parent[node])
+    (*@\textcolor{oc-teal-7}{return parent[node]}@*)
+\end{lstlisting}
+}
+
+\begin{frame}{Naive \texttt{find}: The Same Work Again}
+  \pcquadrants
+    {\dsufindcode}
+    {\dsuarray{0}{0}{1}{0}{3}{5}{6}
+     \par\medskip\footnotesize Exactly where the previous \texttt{union} left us.}
+    {\begin{itemize}
+       \item<1-> Call \texttt{find(2)}: \uncover<2->{$2\to1\to0$.}
+       \item<3-> Call it again: \alert{the same two links!}
+       \item<4-> The answer is returned, but no parent is updated.
+     \end{itemize}
+     \uncover<5->{\textcolor{oc-teal-7}{Can we remember the shortcut to $0$?}}}
+    {\scalebox{0.78}{\dsuforest[{
+       \draw<2->[pointer, oc-orange-6, line width=1.5pt] (dsunode2) -- (dsunode1);
+       \draw<2->[pointer, oc-orange-6, line width=1.5pt] (dsunode1) -- (dsunode0);
+       \draw<5->[pointer, oc-teal-6, dashed, line width=1.5pt]
+         (dsunode2) to[bend left=35] (dsunode0);
+     }]{0}{0}{1}{0}{3}{5}{6}}}
+  \note{25 seconds, 5 overlays. Begin with the unchanged context and find(2).
+    Reveal the complete two-link path, then explain that a repeat follows it again.
+    Reveal the flaw, then show the question and proposed shortcut together.
+    The dashed teal arrow is only a proposed shortcut; the array has not changed.}
+\end{frame}
+
+\begin{frame}{Naive Union Can Build a Chain}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      \textbf{A fresh worst-case example}\par\smallskip
+      {\small Start again with seven singleton sets.\par
+      Our union rule: \texttt{parent[rootB]} $\leftarrow$ \texttt{rootA}.}
+      \medskip
+      \begin{itemize}
+        \item<1-> \texttt{union(1,0)}, \texttt{union(2,1)},\par
+          \texttt{union(3,2)}, \ldots, \texttt{union(6,5)}.
+        \item<4-> \texttt{find(0)} follows \alert{six links}.
+        \item<5-> For $n$ elements: up to $n-1$ links, so one \texttt{find} can take $\Theta(n)$.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \uncover<2->{\textbf{Parent array}\par\medskip
+      \dsuarray{1}{2}{3}{4}{5}{6}{6}}
+      \par\medskip
+      \uncover<3->{\textbf{DSU Forest}\par
+      \pcchain[{
+        \foreach \element in {0,...,5}{
+          \pgfmathtruncatemacro{\ancestor}{\element+1}
+          \draw<4->[pc pointer, oc-orange-6, line width=1.5pt]
+            (pcnode\element) -- (pcnode\ancestor);
+        }
+        \node[font=\footnotesize, text=oc-gray-6] at (3,1.0)
+          {Arrows point to parents; $6$ is the root.};
+      }]{6}}\par\smallskip
+      \uncover<5->{{\small Naive \texttt{union} also calls \texttt{find},\par
+        so it can take $\Theta(n)$ too.}}
+    \end{column}
+  \end{columns}
+  \note{25 seconds, 5 overlays. Present the fresh example, union rule, and operation
+    sequence together. Reveal the resulting array, then the completed forest.
+    Explain the six-link search, then the linear bounds for find and union together.
+    This shows the completed chain, not intermediate union states.
+    Keep this exact array throughout the next simulation.}
+\end{frame}
+
+\begin{frame}{Path Compression: Save the Root on the Way Back}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      \textbf{Before: only return the root}\par\smallskip
+      \dsufindcode
+      \medskip
+      \uncover<2->{\textbf{After: also update each visited parent}\par\smallskip
+      \pcfindcode}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \begin{itemize}
+        \item<1-> Follow parents until reaching the root, exactly as before.
+        \item<2-> As recursion returns, make \textbf{every visited node} point directly to that root.
+        \item<3-> Same set. Same representative. \textbf{Shorter paths.}
+      \end{itemize}
+      \uncover<4->{%
+        \begin{tcolorbox}[colback=oc-blue-0, colframe=oc-blue-6,
+          boxrule=0.8pt, arc=1.5pt, left=6pt, right=6pt, top=4pt, bottom=4pt]
+          \centering\textbf{Find the root, then remember it.}\par
+          \small No change to \texttt{make\_set} or the \texttt{union} pseudocode.
+        \end{tcolorbox}}
+    \end{column}
+  \end{columns}
+  \note{25 seconds, 4 overlays. Show the old listing and explain traversal.
+    Reveal the new listing with its assignment explanation. Next explain unchanged
+    membership, then show the takeaway and unchanged operations together.
+    Store the root in every visited call, not just the starting node.}
+\end{frame}
+
+\begin{frame}{Simulating \texttt{find(0)}: First Reach the Root}
+  \pcquadrants
+    {\only<1-7>{\pcdescendcode}\only<8->{\pcrootcode}}
+    {\dsuarray
+       {\dsucell<2>{1}}{\dsucell<3>{2}}{\dsucell<4>{3}}
+       {\dsucell<5>{4}}{\dsucell<6>{5}}{\dsucell<7>{6}}{\dsucell<8>{6}}
+     \par\medskip\footnotesize No assignments yet: recursive calls are still pending.}
+    {\begin{itemize}
+       \item<1-> Begin with the chain: call \texttt{find(0)}.
+       \item<2-> Calls: $0\uncover<2->{\to1}\uncover<3->{\to2}\uncover<4->{\to3}\uncover<5->{\to4}\uncover<6->{\to5}\uncover<7->{\to6}$.
+       \item<8-> \texttt{parent[6] = 6}: return $6$.
+     \end{itemize}
+     \uncover<8->{\textcolor{oc-teal-7}{Now the suspended calls can update their parents.}}}
+    {\pcchain[{
+       \foreach \element in {0,...,5}{
+         \pgfmathtruncatemacro{\ancestor}{\element+1}
+         \pgfmathtruncatemacro{\reveal}{\element+2}
+         \draw<\reveal->[pc pointer, oc-orange-6, line width=1.5pt]
+           (pcnode\element) -- (pcnode\ancestor);
+       }
+       \node<1>[pc vertex, pc visited] at (pcnode0) {0};
+       \node<8->[pc vertex, pc visited] at (pcnode6) {6};
+       \node[font=\footnotesize, text=oc-orange-6] at (3,1.0)
+         {\alt<8->{Root found: return $6$.}{Follow the original parent pointers.}};
+     }]{6}}
+  \note{30 seconds, 8 overlays. Begin at node 0. Each of the next six clicks
+    follows exactly one parent link and highlights the array entry just read.
+    On the final click, check the root, return 6, and announce unwinding together.
+    No parent value changes on descent. The first search still pays the full cost.}
+\end{frame}
+
+\begin{frame}{Returning: Every Visited Node Gets the Shortcut}
+  \pcquadrants
+    {\only<1>{\pcrootcode}\only<2->{\pcreturncode}}
+    {\dsuarray
+       {\dsucell<7>{\alt<7->{6}{1}}}
+       {\dsucell<6>{\alt<6->{6}{2}}}
+       {\dsucell<5>{\alt<5->{6}{3}}}
+       {\dsucell<4>{\alt<4->{6}{4}}}
+       {\dsucell<3>{\alt<3->{6}{5}}}
+       {\dsucell<2>{6}}{\dsucell<1>{6}}
+     \par\medskip\footnotesize
+     \textcolor{oc-orange-6}{Orange cell}: active parent entry.\par
+     \textcolor{oc-teal-7}{Teal arrow}: a saved shortcut.}
+    {\begin{minipage}[t][2.4cm][t]{\linewidth}
+       \only<1>{\texttt{find(6)} returns $6$.}
+       \only<2>{\texttt{parent[5]} $\leftarrow 6$; return $6$.\par
+         Already points to the root: no visible change.}
+       \only<3>{\texttt{parent[4]} $\leftarrow 6$; return $6$.\par
+         Replace $4\to5$ with $4\to6$.}
+       \only<4>{\texttt{parent[3]} $\leftarrow 6$; return $6$.\par
+         Replace $3\to4$ with $3\to6$.}
+       \only<5>{\texttt{parent[2]} $\leftarrow 6$; return $6$.\par
+         Replace $2\to3$ with $2\to6$.}
+       \only<6>{\texttt{parent[1]} $\leftarrow 6$; return $6$.\par
+         Replace $1\to2$ with $1\to6$.}
+       \only<7>{\texttt{parent[0]} $\leftarrow 6$; return $6$.\par
+         \textbf{Done: every non-root now points to $6$.}}
+       \par\medskip
+       \textcolor{oc-gray-6}{Return order: $6,5,4,3,2,1,0$.}
+     \end{minipage}}
+    {\only<1-2>{\pcchain{6}}%
+     \only<3>{\pcchain{4}}%
+     \only<4>{\pcchain{3}}%
+     \only<5>{\pcchain{2}}%
+     \only<6>{\pcchain{1}}%
+     \only<7>{\pcchain{0}}}
+  \note{50 seconds, 7 overlays. Begin with the root returning 6. Advance once per
+    returning node, from 5 down to 0. Explain its assignment while the array and
+    matching pointer update together. Node 5 needs no rewiring. The final update
+    also shows completion. Keep the nodes stationary and emphasize that every
+    visited node, not just the starting node, saves the root.}
+\end{frame}
+
+\begin{frame}{The Next \texttt{find(0)}: Six Links Become One}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      \textbf{Before compression}\par
+      \pcchain[{
+        \node[font=\small\bfseries, text=oc-orange-6] at (3,1)
+          {$0\to1\to2\to3\to4\to5\to6$};
+      }]{6}
+      \par\smallskip
+      {\small \textbf{First search:} six parent links.\par
+        Without compression, every repeat costs six.}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \uncover<2->{\textbf{After compression: the same nodes rearranged}\par
+      \begin{tikzpicture}[x=0.8cm, y=0.8cm]
+        \path[use as bounding box] (-0.4,-0.45) rectangle (6.4,2.65);
+        \node[pc vertex, draw=oc-blue-6, fill=oc-blue-0] (pcroot) at (3,1.75) {6};
+        \draw[pc pointer, oc-blue-6] (pcroot) edge[loop above] (pcroot);
+        \foreach \element in {0,...,5}{
+          \node[pc vertex] (pcflat\element) at (1.2*\element,0) {\element};
+          \draw[pc shortcut] (pcflat\element) -- (pcroot);
+        }
+        \draw<3->[pc pointer, oc-orange-6, line width=1.8pt] (pcflat0) -- (pcroot);
+      \end{tikzpicture}}
+      \par\smallskip
+      \uncover<3->{{\small \textbf{Next search:} one parent link, $0\to6$.\par
+        Other visited nodes benefit too.}}
+    \end{column}
+  \end{columns}
+  \medskip
+  \uncover<4->{%
+    \begin{tcolorbox}[colback=oc-blue-0, colframe=oc-blue-6,
+      boxrule=0.8pt, arc=1.5pt, left=6pt, right=6pt, top=4pt, bottom=4pt]
+      \centering\small For $k\geq1$ calls to \texttt{find(0)}, with \textbf{no intervening unions}:\par
+      naive: $6k$ parent-link traversals\quad
+      vs.\quad compression: $6+(k-1)$.
+    \end{tcolorbox}}
+  \note{25 seconds, 4 overlays. Present the original tree and search costs together.
+    Reveal the compressed star, then highlight the next query with its one-link
+    cost and the benefit to other visited nodes. Finally show the complete count
+    comparison with its conditions. Count traversed links, not all reads or writes. End this part
+    here; leave the explanation of union by rank entirely to member 3.}
+\end{frame}
